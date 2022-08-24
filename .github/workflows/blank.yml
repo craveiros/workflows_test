@@ -1,0 +1,44 @@
+name: Promote app to production
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      EDIT_FAMILY_URL: ${{ secrets.PRD_EDIT_FAMILY_URL }}
+      BFF_MS_QUESTIONS_ANSWERS_API_URL: ${{ secrets.PRD_BFF_MS_QUESTIONS_ANSWERS_API_URL }}
+      BFF_MS_FAMILY_API_URL: ${{ secrets.PRD_BFF_MS_FAMILY_API_URL }}
+      GOOGLE_SERVICE_ACCOUNT_BASE64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_BASE64 }}
+    steps:
+      - name: 🏗 Setup repo
+        uses: actions/checkout@v2
+
+      - name: 🏗 Setup Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: 16.x
+          cache: yarn
+
+      - name: 🏗 Setup Expo and EAS
+        uses: expo/expo-github-action@v7
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 🏗 Setup jq
+        run: sudo apt-get install jq
+
+      - name: 🏗 Setup Google Service Account
+        run: mkdir secrets && (echo "${GOOGLE_SERVICE_ACCOUNT_BASE64}" | base64 --decode) > secrets/credentials.json
+
+      - name: 📦 Install dependencies
+        run: yarn install
+
+      - name: 🏗 Get last successfuly build id
+        run: echo `BUILD_ID=$(eas build:list --limit 1 --platform android --status finished --buildProfile preview  --json | jq -r ".[0].id")` >> $GITHUB_ENV
+
+      - name: 🚀 Promote to production
+        run: eas submit --non-interactive --platform android --profile production --id ${BUILD_ID} --no-wait
